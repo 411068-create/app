@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>背單字卡片</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>背單字卡片</h1>
+    <nav>
+      <button id="studyTab" class="tab-button active">學習</button>
+      <button id="manageTab" class="tab-button">管理單字</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="studyView" class="view active-view">
+      <div class="card-container">
+        <div id="wordCard" class="card" aria-label="單字卡片">
+          <div class="face front">
+            <div class="word-title">英文單字</div>
+            <div id="cardFrontText" class="word-text"></div>
+            <div class="hint">點擊卡片翻面</div>
+          </div>
+          <div class="face back">
+            <div class="word-title">單字資訊</div>
+            <div class="word-info"><strong>翻譯：</strong><span id="cardTranslation"></span></div>
+            <div class="word-info"><strong>詞性：</strong><span id="cardPartOfSpeech"></span></div>
+            <div class="word-info"><strong>例句：</strong><span id="cardExample"></span></div>
+            <div class="word-info"><strong>字根分析：</strong><span id="cardRootAnalysis"></span></div>
+            <div class="hint">再點一次回到英文</div>
+          </div>
+        </div>
+      </div>
+      <div class="study-controls">
+        <button id="prevWord">上一個</button>
+        <button id="nextWord">下一個</button>
+        <button id="randomWord">隨機</button>
+      </div>
+    </section>
+
+    <section id="manageView" class="view">
+      <div class="manage-panel">
+        <div class="form-section">
+          <h2>新增 / 編輯單字</h2>
+          <div class="field-group">
+            <label for="englishInput">英文單字</label>
+            <input id="englishInput" type="text" placeholder="請輸入英文單字" />
+          </div>
+          <div class="field-group small-row">
+            <div>
+              <label for="translationInput">翻譯</label>
+              <input id="translationInput" type="text" placeholder="翻譯" />
+            </div>
+            <div>
+              <label for="partOfSpeechInput">詞性</label>
+              <input id="partOfSpeechInput" type="text" placeholder="詞性" />
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="exampleInput">例句</label>
+            <textarea id="exampleInput" rows="3" placeholder="例句"></textarea>
+          </div>
+          <div class="field-group">
+            <label for="rootAnalysisInput">字根分析</label>
+            <textarea id="rootAnalysisInput" rows="3" placeholder="字根分析"></textarea>
+          </div>
+          <div class="button-row">
+            <button id="autoFillBtn" class="secondary">自動填入</button>
+            <button id="saveWordBtn">儲存單字</button>
+          </div>
+          <p class="tip">使用「自動填入」會從公開詞典 API 擷取詞性、例句與翻譯提示。</p>
+        </div>
+
+        <div class="list-section">
+          <h2>單字清單</h2>
+          <div id="wordList" class="word-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>純前端背單字應用。資料儲存在瀏覽器中。</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
