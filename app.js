@@ -21,6 +21,10 @@ const saveWordBtn = document.getElementById('saveWordBtn');
 const wordList = document.getElementById('wordList');
 
 const STORAGE_KEY = 'vocabCards';
+// 若要將單字送到 Google Apps Script，請在此填入部署後的 Web App URL
+const GAS_ENDPOINT = '';
+// 如需驗證，可設定此密鑰，並在 Apps Script 檢查此 header
+const GAS_SECRET = '';
 let currentIndex = 0;
 let cards = [];
 let editIndex = null;
@@ -189,6 +193,44 @@ function saveWord() {
   showWordList();
   clearForm();
   alert('單字已儲存。');
+
+  // 如果有設定 GAS_ENDPOINT，非同步送出到後端（不阻塞 UI）
+  if (GAS_ENDPOINT) {
+    sendToBackend(newCard);
+  }
+}
+
+function sendToBackend(card) {
+  if (!GAS_ENDPOINT) return;
+
+  const payload = {
+    english: card.english,
+    translation: card.translation,
+    partOfSpeech: card.partOfSpeech,
+    example: card.example,
+    rootAnalysis: card.rootAnalysis,
+    timestamp: new Date().toISOString(),
+  };
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (GAS_SECRET) headers['X-GAS-SECRET'] = GAS_SECRET;
+
+  fetch(GAS_ENDPOINT, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    mode: 'cors',
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error('後端回傳錯誤');
+      return res.text();
+    })
+    .then(() => {
+      console.log('已將單字送至後端');
+    })
+    .catch((err) => {
+      console.warn('送出到後端失敗：', err);
+    });
 }
 
 function guessRootAnalysis(word) {
@@ -226,6 +268,39 @@ function guessRootAnalysis(word) {
   return '暫無字根資料，可自行補充。';
 }
 
+const localDictionary = {
+  journey: {
+    translation: '旅程；旅行',
+    partOfSpeech: 'noun',
+    example: 'The journey was long but full of beautiful views.',
+    rootAnalysis: 'jour = road, path; -ney 表示狀態或過程。',
+  },
+  adapt: {
+    translation: '適應',
+    partOfSpeech: 'verb',
+    example: 'She had to adapt quickly to the new environment.',
+    rootAnalysis: 'ad- 向；apt = fit, 適合。',
+  },
+  benefit: {
+    translation: '利益；好處',
+    partOfSpeech: 'noun / verb',
+    example: 'Everyone can benefit from enough sleep.',
+    rootAnalysis: 'bene- 好；fit = 適合。',
+  },
+  photograph: {
+    translation: '照片；攝影',
+    partOfSpeech: 'noun / verb',
+    example: 'She took a beautiful photograph at sunset.',
+    rootAnalysis: 'photo- 光；-graph 寫、畫。',
+  },
+  biography: {
+    translation: '傳記；生平',
+    partOfSpeech: 'noun',
+    example: 'He read a biography of the famous scientist.',
+    rootAnalysis: 'bio- 生命；-graphy 書寫或記錄。',
+  },
+};
+
 function randomIndex() {
   return Math.floor(Math.random() * cards.length);
 }
@@ -255,34 +330,26 @@ function autoFillFromApi() {
   autoFillBtn.disabled = true;
   autoFillBtn.textContent = '載入中…';
 
-  fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q=${單字}`)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error('無法取得字典資料');
-      }
-      return response.json();
-    })
-    .then((data) => {
-      if (!Array.isArray(data) || !data.length) {
-        throw new Error('找不到此單字資訊');
-      }
-      const entry = data[0];
-      const meaning = entry.meanings?.[0];
-      const definition = meaning?.definitions?.[0];
+  const key = english.toLowerCase();
+  const entry = localDictionary[key];
+  if (entry) {
+    translationInput.value = entry.translation || translationInput.value || '';
+    partOfSpeechInput.value = entry.partOfSpeech || partOfSpeechInput.value || '';
+    exampleInput.value = entry.example || exampleInput.value || '';
+    rootAnalysisInput.value = entry.rootAnalysis || guessRootAnalysis(english);
+    autoFillBtn.disabled = false;
+    autoFillBtn.textContent = '自動填入';
+    return;
+  }
 
-      translationInput.value = definition?.definition || translationInput.value || '';
-      partOfSpeechInput.value = meaning?.partOfSpeech || partOfSpeechInput.value || '';
-      exampleInput.value = definition?.example || exampleInput.value || '';
-      rootAnalysisInput.value = guessRootAnalysis(english);
-    })
-    .catch((error) => {
-      console.warn(error);
-      alert('自動填入失敗，請稍後重試或手動填寫。');
-    })
-    .finally(() => {
-      autoFillBtn.disabled = false;
-      autoFillBtn.textContent = '自動填入';
-    });
+  // 若內建詞庫找不到，使用字根猜測並提示使用者手動補充
+  rootAnalysisInput.value = guessRootAnalysis(english);
+  translationInput.value = translationInput.value || '';
+  partOfSpeechInput.value = partOfSpeechInput.value || '';
+  exampleInput.value = exampleInput.value || '';
+  alert('詞庫中找不到此單字，已以字根猜測做為參考，請手動補充翻譯或例句。');
+  autoFillBtn.disabled = false;
+  autoFillBtn.textContent = '自動填入';
 }
 
 wordCard.addEventListener('click', () => {
