@@ -20,13 +20,14 @@ const autoFillBtn = document.getElementById('autoFillBtn');
 const saveWordBtn = document.getElementById('saveWordBtn');
 const wordList = document.getElementById('wordList');
 
-const STORAGE_KEY = 'https://script.google.com/macros/s/AKfycbyQJ5jqrHlDTIiGV0KTQSTmoGkQKwzSv_Fi5erEk_nCxa5-onXu7Flcw622AVIC6-zs/exec';
+const STORAGE_KEY = 'vocabCards';
 // 若要將單字送到 Google Apps Script，請在此填入部署後的 Web App URL
 const GAS_ENDPOINT = '';
 // 如需驗證，可設定此密鑰，並在 Apps Script 檢查此 header
 const GAS_SECRET = '';
 // 外部 API 設定（可留空以跳過）
-const TRANSLATE_API_URL = '';
+// LibreTranslate 範例 endpoint（預設使用 libretranslate.de，可改為空字串以停用）
+const TRANSLATE_API_URL = 'https://libretranslate.de/translate';
 const TRANSLATE_API_KEY = '';
 // Wordnik 用於取得例句、詞性與詞源
 const WORDNIK_API_KEY = '';
@@ -68,6 +69,32 @@ function loadCards() {
     }
   } else {
     cards = defaultCards;
+  }
+
+  // 若沒有設定 Wordnik API key，使用 dictionaryapi.dev 作為免費替代
+  if (!WORDNIK_API_KEY) {
+    tasks.push(
+      fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lower)}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((resp) => {
+          if (!resp) return;
+          const primary = Array.isArray(resp) ? resp[0] : resp;
+          if (!primary) return;
+          if (primary.origin && !results.rootAnalysis) results.rootAnalysis = primary.origin;
+          const meanings = primary.meanings || [];
+          if (meanings.length) {
+            const m = meanings[0];
+            if (!results.partOfSpeech && m.partOfSpeech) results.partOfSpeech = m.partOfSpeech;
+            const defs = m.definitions || [];
+            if (defs.length) {
+              const d0 = defs[0];
+              if (d0.definition && !results.translation) results.translation = d0.definition;
+              if (d0.example && !results.example) results.example = d0.example;
+            }
+          }
+        })
+        .catch(() => {})
+    );
   }
 }
 
