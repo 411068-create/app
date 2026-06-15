@@ -255,7 +255,7 @@ function autoFillFromApi() {
   autoFillBtn.disabled = true;
   autoFillBtn.textContent = '載入中…';
 
-  fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(english)}`)
+  fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q=${單字}`)
     .then((response) => {
       if (!response.ok) {
         throw new Error('無法取得字典資料');
