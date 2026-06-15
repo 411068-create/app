@@ -323,8 +323,8 @@ function setActiveTab(tab) {
   }
 }
 
-// 💡 【修正重點一】加上 async 關鍵字，允許內部使用 await
-async function autoFillFromApi() {
+// 💡 為了讓代碼結構最穩健且免受不相容問題干擾，改用傳統 .then().finally() 結構
+function autoFillFromApi() {
   const english = normalizeWord(englishInput.value);
   if (!english) {
     alert('請先輸入英文單字，再按下自動填入。');
@@ -347,4 +347,141 @@ async function autoFillFromApi() {
 
   const tasks = [];
 
-  //
+  // 1) 翻譯：LibreTranslate-like API
+  if (TRANSLATE_API_URL) {
+    const tBody = { q: word, source: 'en', target: 'zh', format: 'text' };
+    if (TRANSLATE_API_KEY) tBody.api_key = TRANSLATE_API_KEY;
+    tasks.push(
+      fetch(TRANSLATE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tBody),
+      })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data) {
+            results.translation = data.translatedText || data.result || data.translation || '';
+          }
+        })
+        .catch(() => {})
+    );
+  }
+
+  // 2) 例句 / 詞性 / 詞源：Wordnik
+  if (WORDNIK_API_KEY) {
+    // definitions
+    tasks.push(
+      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/definitions?limit=5&includeRelated=false&useCanonical=true&api_key=${WORDNIK_API_KEY}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((defs) => {
+          if (Array.isArray(defs) && defs.length) {
+            const d = defs[0];
+            if (!results.partOfSpeech && d.partOfSpeech) results.partOfSpeech = d.partOfSpeech;
+            // 【修正】確實寫入單字定義，不再丟失
+            if (!results.translation && d.text) results.translation = d.text;
+          }
+        })
+        .catch(() => {})
+    );
+
+    // examples
+    tasks.push(
+      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/examples?limit=5&api_key=${WORDNIK_API_KEY}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((ex) => {
+          if (ex) {
+            const examples = ex.examples || ex.example || ex;
+            if (Array.isArray(examples) && examples.length) {
+              results.example = examples[0].text || examples[0].example || '';
+            }
+          }
+        })
+        .catch(() => {})
+    );
+
+    // etymologies
+    tasks.push(
+      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/etymologies?api_key=${WORDNIK_API_KEY}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((et) => {
+          if (Array.isArray(et) && et.length) {
+            const rawEtymology = et[0] || '';
+            // 【優化】去除 Wordnik 回傳內容中惱人的 XML/HTML 標籤
+            results.rootAnalysis = rawEtymology.replace(/<\/?[^>]+(>|$)/g, "").trim();
+          }
+        })
+        .catch(() => {})
+    );
+  }
+
+  // 3) 判斷有無 API 任務，並執行 Promise.all
+  if (tasks.length === 0) {
+    // 完全沒設定外部 API 時的 Fallback 處理
+    const entry = localDictionary[lower];
+    if (entry) {
+      translationInput.value = entry.translation || '';
+      partOfSpeechInput.value = entry.partOfSpeech || '';
+      exampleInput.value = entry.example || '';
+      rootAnalysisInput.value = entry.rootAnalysis || guessRootAnalysis(word);
+    } else {
+      rootAnalysisInput.value = guessRootAnalysis(word);
+      alert('未設定外部 API，已以字根猜測填入字根分析，請手動補充其他欄位。');
+    }
+    autoFillBtn.disabled = false;
+    autoFillBtn.textContent = '自動填入';
+    return;
+  }
+
+  // 有 API 任務時，等待全部完成再做資料填入
+  Promise.all(tasks)
+    .catch((err) => console.error("API 執行發生錯誤:", err))
+    .finally(() => {
+      const entry = localDictionary[lower] || {};
+      
+      // 優先序：API 回傳 ➡️ 本地詞庫 ➡️ 原本輸入框的值 ➡️ 空字串
+      translationInput.value = results.translation || entry.translation || translationInput.value || '';
+      partOfSpeechInput.value = results.partOfSpeech || entry.partOfSpeech || partOfSpeechInput.value || '';
+      exampleInput.value = results.example || entry.example || exampleInput.value || '';
+      rootAnalysisInput.value = results.rootAnalysis || entry.rootAnalysis || rootAnalysisInput.value || guessRootAnalysis(word);
+
+      autoFillBtn.disabled = false;
+      autoFillBtn.textContent = '自動填入';
+    });
+}
+
+// ==========================================
+// 事件監聽與初始化
+// ==========================================
+wordCard.addEventListener('click', () => {
+  wordCard.classList.toggle('flipped');
+});
+
+prevWordBtn.addEventListener('click', () => {
+  if (!cards.length) return;
+  currentIndex = (currentIndex - 1 + cards.length) % cards.length;
+  updateCard();
+  wordCard.classList.remove('flipped');
+});
+
+nextWordBtn.addEventListener('click', () => {
+  if (!cards.length) return;
+  currentIndex = (currentIndex + 1) % cards.length;
+  updateCard();
+  wordCard.classList.remove('flipped');
+});
+
+randomWordBtn.addEventListener('click', () => {
+  if (!cards.length) return;
+  currentIndex = randomIndex();
+  updateCard();
+  wordCard.classList.remove('flipped');
+});
+
+studyTab.addEventListener('click', () => setActiveTab('study'));
+manageTab.addEventListener('click', () => setActiveTab('manage'));
+autoFillBtn.addEventListener('click', autoFillFromApi);
+saveWordBtn.addEventListener('click', saveWord);
+
+loadCards();
+updateCard();
+showWordList();
