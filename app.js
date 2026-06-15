@@ -20,7 +20,7 @@ const autoFillBtn = document.getElementById('autoFillBtn');
 const saveWordBtn = document.getElementById('saveWordBtn');
 const wordList = document.getElementById('wordList');
 
-const STORAGE_KEY = 'vocabCards';
+const STORAGE_KEY = 'https://script.google.com/macros/s/AKfycbyQJ5jqrHlDTIiGV0KTQSTmoGkQKwzSv_Fi5erEk_nCxa5-onXu7Flcw622AVIC6-zs/exec';
 // 若要將單字送到 Google Apps Script，請在此填入部署後的 Web App URL
 const GAS_ENDPOINT = '';
 // 如需驗證，可設定此密鑰，並在 Apps Script 檢查此 header
