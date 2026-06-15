@@ -371,44 +371,54 @@ function autoFillFromApi() {
 
   // 2) 例句 / 詞性 / 詞源：Wordnik
   if (WORDNIK_API_KEY) {
-    // definitions
-    tasks.push(
-      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/definitions?limit=5&includeRelated=false&useCanonical=true&api_key=${WORDNIK_API_KEY}`)
-        .then((r) => r.json())
-        .then((defs) => {
-          if (Array.isArray(defs) && defs.length) {
-            const d = defs[0];
-            if (!results.partOfSpeech && d.partOfSpeech) results.partOfSpeech = d.partOfSpeech;
-            if (!results.translation && d.text) results.translation = results.translation || '';
-          }
-        })
-        .catch(() => {})
-    );
+  // ==========================================
+  // 1. 查詢：單字定義與詞性 (Definitions)
+  // ==========================================
+  tasks.push(
+    fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/definitions?limit=5&includeRelated=false&useCanonical=true&api_key=${WORDNIK_API_KEY}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((defs) => {
+        if (Array.isArray(defs) && defs.length) {
+          const d = defs[0];
+          if (!results.partOfSpeech && d.partOfSpeech) results.partOfSpeech = d.partOfSpeech;
+          // 【已修正】確實將定義文字賦值給結果
+          if (!results.translation && d.text) results.translation = d.text;
+        }
+      })
+      .catch(() => {})
+  );
 
-    // examples
-    tasks.push(
-      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/examples?limit=5&api_key=${WORDNIK_API_KEY}`)
-        .then((r) => r.json())
-        .then((ex) => {
-          const examples = ex.examples || ex.example || ex;
-          if (Array.isArray(examples) && examples.length) {
-            results.example = examples[0].text || examples[0].example || '';
-          }
-        })
-        .catch(() => {})
-    );
+  // ==========================================
+  // 2. 查詢：例句 (Examples)
+  // ==========================================
+  tasks.push(
+    fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/examples?limit=5&api_key=${WORDNIK_API_KEY}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((ex) => {
+        if (ex && Array.isArray(ex.examples) && ex.examples.length) {
+          // Wordnik 標準欄位為 .text
+          results.example = ex.examples[0].text || '';
+        }
+      })
+      .catch(() => {})
+  );
 
-    // etymologies
-    tasks.push(
-      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/etymologies?api_key=${WORDNIK_API_KEY}`)
-        .then((r) => r.json())
-        .then((et) => {
-          if (Array.isArray(et) && et.length) {
-            results.rootAnalysis = et[0] || '';
-          }
-        })
-        .catch(() => {})
-    );
+  // ==========================================
+  // 3. 查詢：字源分析 (Etymologies)
+  // ==========================================
+  tasks.push(
+    fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/etymologies?api_key=${WORDNIK_API_KEY}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((et) => {
+        if (Array.isArray(et) && et.length) {
+          const rawEtymology = et[0] || '';
+          // 【優化】使用 Regex 濾除 Wordnik 回傳字源中常見的 <ets> 或 <i> 等 XML/HTML 標籤
+          results.rootAnalysis = rawEtymology.replace(/<\/?[^>]+(>|$)/g, "").trim();
+        }
+      })
+      .catch(() => {})
+  );
+}
   }
 
   // 執行所有任務，若沒有外部 API，直接用本地詞庫或字根推測
@@ -444,7 +454,7 @@ function autoFillFromApi() {
       autoFillBtn.disabled = false;
       autoFillBtn.textContent = '自動填入';
     });
-}
+
 
 wordCard.addEventListener('click', () => {
   wordCard.classList.toggle('flipped');
