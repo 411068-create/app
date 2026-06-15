@@ -26,7 +26,6 @@ const GAS_ENDPOINT = '';
 // 如需驗證，可設定此密鑰，並在 Apps Script 檢查此 header
 const GAS_SECRET = '';
 // 外部 API 設定（可留空以跳過）
-// LibreTranslate 範例 endpoint（可使用 https://libretranslate.de/translate）
 const TRANSLATE_API_URL = '';
 const TRANSLATE_API_KEY = '';
 // Wordnik 用於取得例句、詞性與詞源
@@ -200,7 +199,6 @@ function saveWord() {
   clearForm();
   alert('單字已儲存。');
 
-  // 如果有設定 GAS_ENDPOINT，非同步送出到後端（不阻塞 UI）
   if (GAS_ENDPOINT) {
     sendToBackend(newCard);
   }
@@ -325,7 +323,8 @@ function setActiveTab(tab) {
   }
 }
 
-function autoFillFromApi() {
+// 💡 【修正重點一】加上 async 關鍵字，允許內部使用 await
+async function autoFillFromApi() {
   const english = normalizeWord(englishInput.value);
   if (!english) {
     alert('請先輸入英文單字，再按下自動填入。');
@@ -348,138 +347,4 @@ function autoFillFromApi() {
 
   const tasks = [];
 
-  // 1) 翻譯：LibreTranslate-like API
-  if (TRANSLATE_API_URL) {
-    const tBody = { q: word, source: 'en', target: 'zh', format: 'text' };
-    if (TRANSLATE_API_KEY) tBody.api_key = TRANSLATE_API_KEY;
-    tasks.push(
-      fetch(TRANSLATE_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tBody),
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          // LibreTranslate 回傳可能為 { translatedText: '...' } 或類似
-          results.translation = data.translatedText || data.result || data.translation || '';
-        })
-        .catch(() => {
-          /* ignore */
-        })
-    );
-  }
-
-  // 確保這段程式碼所在的外部 function 有加上 async，例如：async function handleAutoFill() { ... }
-
-if (WORDNIK_API_KEY) {
-  // 1. 查詢：單字定義與詞性 (Definitions)
-  tasks.push(
-    fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/definitions?limit=5&includeRelated=false&useCanonical=true&api_key=${WORDNIK_API_KEY}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((defs) => {
-        if (Array.isArray(defs) && defs.length) {
-          const d = defs[0];
-          if (!results.partOfSpeech && d.partOfSpeech) results.partOfSpeech = d.partOfSpeech;
-          if (!results.translation && d.text) results.translation = d.text;
-        }
-      })
-      .catch(() => {})
-  );
-
-  // 2. 查詢：例句 (Examples)
-  tasks.push(
-    fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/examples?limit=5&api_key=${WORDNIK_API_KEY}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((ex) => {
-        if (ex && Array.isArray(ex.examples) && ex.examples.length) {
-          results.example = ex.examples[0].text || '';
-        }
-      })
-      .catch(() => {})
-  );
-
-  // 3. 查詢：字源分析 (Etymologies)
-  tasks.push(
-    fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/etymologies?api_key=${WORDNIK_API_KEY}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((et) => {
-        if (Array.isArray(et) && et.length) {
-          const rawEtymology = et[0] || '';
-          results.rootAnalysis = rawEtymology.replace(/<\/?[^>]+(>|$)/g, "").trim();
-        }
-      })
-      .catch(() => {})
-  );
-}
-
-// ==========================================
-// 流程判斷與資料填入 (已整合所有 Fallback 機制)
-// ==========================================
-
-try {
-  if (tasks.length > 0) {
-    // 等待所有 Wordnik API 請求並行完成
-    await Promise.all(tasks);
-  }
-} catch (error) {
-  console.error('API 執行時發生未知錯誤:', error);
-} finally {
-  // 不論 API 是成功、失敗，還是根本沒執行 (tasks 為空)，統一在這裡做 Fallback 賦值
-  const entry = localDictionary[lower] || {};
-
-  // 優先順序：API 回傳值 ➡️ 本地詞庫 ➡️ 原本輸入框的值 ➡️ 空字串
-  translationInput.value = results.translation || entry.translation || translationInput.value || '';
-  partOfSpeechInput.value = results.partOfSpeech || entry.partOfSpeech || partOfSpeechInput.value || '';
-  exampleInput.value = results.example || entry.example || exampleInput.value || '';
-  
-  // 字根分析特別處理：API ➡️ 本地 ➡️ 原本值 ➡️ 演算法猜測
-  rootAnalysisInput.value = results.rootAnalysis || entry.rootAnalysis || rootAnalysisInput.value || guessRootAnalysis(word);
-
-  // 提示使用者目前資料來源
-  if (tasks.length === 0) {
-    if (localDictionary[lower]) {
-      console.log('已從本地詞庫填入資料。');
-    } else {
-      alert('未設定外部 API，且本地無此單字，已自動以字根猜測填入，請手動補充其他欄位。');
-    }
-  }
-
-  // 恢復按鈕狀態
-  autoFillBtn.disabled = false;
-  autoFillBtn.textContent = '自動填入';
-}
-
-
-wordCard.addEventListener('click', () => {
-  wordCard.classList.toggle('flipped');
-});
-
-prevWordBtn.addEventListener('click', () => {
-  if (!cards.length) return;
-  currentIndex = (currentIndex - 1 + cards.length) % cards.length;
-  updateCard();
-  wordCard.classList.remove('flipped');
-});
-
-nextWordBtn.addEventListener('click', () => {
-  if (!cards.length) return;
-  currentIndex = (currentIndex + 1) % cards.length;
-  updateCard();
-  wordCard.classList.remove('flipped');
-});
-
-randomWordBtn.addEventListener('click', () => {
-  if (!cards.length) return;
-  currentIndex = randomIndex();
-  updateCard();
-  wordCard.classList.remove('flipped');
-});
-
-studyTab.addEventListener('click', () => setActiveTab('study'));
-manageTab.addEventListener('click', () => setActiveTab('manage'));
-autoFillBtn.addEventListener('click', autoFillFromApi);
-saveWordBtn.addEventListener('click', saveWord);
-
-loadCards();
-updateCard();
-showWordList();
+  //
