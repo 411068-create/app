@@ -20,11 +20,17 @@ const autoFillBtn = document.getElementById('autoFillBtn');
 const saveWordBtn = document.getElementById('saveWordBtn');
 const wordList = document.getElementById('wordList');
 
-const STORAGE_KEY = 'https://script.google.com/macros/s/AKfycbyQJ5jqrHlDTIiGV0KTQSTmoGkQKwzSv_Fi5erEk_nCxa5-onXu7Flcw622AVIC6-zs/exec';
+const STORAGE_KEY = 'vocabCards';
 // 若要將單字送到 Google Apps Script，請在此填入部署後的 Web App URL
 const GAS_ENDPOINT = '';
 // 如需驗證，可設定此密鑰，並在 Apps Script 檢查此 header
 const GAS_SECRET = '';
+// 外部 API 設定（可留空以跳過）
+// LibreTranslate 範例 endpoint（可使用 https://libretranslate.de/translate）
+const TRANSLATE_API_URL = '';
+const TRANSLATE_API_KEY = '';
+// Wordnik 用於取得例句、詞性與詞源
+const WORDNIK_API_KEY = '';
 let currentIndex = 0;
 let cards = [];
 let editIndex = null;
@@ -330,26 +336,114 @@ function autoFillFromApi() {
   autoFillBtn.disabled = true;
   autoFillBtn.textContent = '載入中…';
 
-  const key = english.toLowerCase();
-  const entry = localDictionary[key];
-  if (entry) {
-    translationInput.value = entry.translation || translationInput.value || '';
-    partOfSpeechInput.value = entry.partOfSpeech || partOfSpeechInput.value || '';
-    exampleInput.value = entry.example || exampleInput.value || '';
-    rootAnalysisInput.value = entry.rootAnalysis || guessRootAnalysis(english);
+  const word = english;
+  const lower = word.toLowerCase();
+
+  const results = {
+    translation: '',
+    partOfSpeech: '',
+    example: '',
+    rootAnalysis: '',
+  };
+
+  const tasks = [];
+
+  // 1) 翻譯：LibreTranslate-like API
+  if (TRANSLATE_API_URL) {
+    const tBody = { q: word, source: 'en', target: 'zh', format: 'text' };
+    if (TRANSLATE_API_KEY) tBody.api_key = TRANSLATE_API_KEY;
+    tasks.push(
+      fetch(TRANSLATE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tBody),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          // LibreTranslate 回傳可能為 { translatedText: '...' } 或類似
+          results.translation = data.translatedText || data.result || data.translation || '';
+        })
+        .catch(() => {
+          /* ignore */
+        })
+    );
+  }
+
+  // 2) 例句 / 詞性 / 詞源：Wordnik
+  if (WORDNIK_API_KEY) {
+    // definitions
+    tasks.push(
+      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/definitions?limit=5&includeRelated=false&useCanonical=true&api_key=${WORDNIK_API_KEY}`)
+        .then((r) => r.json())
+        .then((defs) => {
+          if (Array.isArray(defs) && defs.length) {
+            const d = defs[0];
+            if (!results.partOfSpeech && d.partOfSpeech) results.partOfSpeech = d.partOfSpeech;
+            if (!results.translation && d.text) results.translation = results.translation || '';
+          }
+        })
+        .catch(() => {})
+    );
+
+    // examples
+    tasks.push(
+      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/examples?limit=5&api_key=${WORDNIK_API_KEY}`)
+        .then((r) => r.json())
+        .then((ex) => {
+          const examples = ex.examples || ex.example || ex;
+          if (Array.isArray(examples) && examples.length) {
+            results.example = examples[0].text || examples[0].example || '';
+          }
+        })
+        .catch(() => {})
+    );
+
+    // etymologies
+    tasks.push(
+      fetch(`https://api.wordnik.com/v4/word.json/${encodeURIComponent(lower)}/etymologies?api_key=${WORDNIK_API_KEY}`)
+        .then((r) => r.json())
+        .then((et) => {
+          if (Array.isArray(et) && et.length) {
+            results.rootAnalysis = et[0] || '';
+          }
+        })
+        .catch(() => {})
+    );
+  }
+
+  // 執行所有任務，若沒有外部 API，直接用本地詞庫或字根推測
+  if (tasks.length === 0) {
+    const entry = localDictionary[lower];
+    if (entry) {
+      translationInput.value = entry.translation || '';
+      partOfSpeechInput.value = entry.partOfSpeech || '';
+      exampleInput.value = entry.example || '';
+      rootAnalysisInput.value = entry.rootAnalysis || guessRootAnalysis(word);
+      autoFillBtn.disabled = false;
+      autoFillBtn.textContent = '自動填入';
+      return;
+    }
+
+    // 無 API、無本地資料：僅猜測字根
+    rootAnalysisInput.value = guessRootAnalysis(word);
+    alert('未設定外部 API，已以字根猜測填入字根分析，請手動補充其他欄位。');
     autoFillBtn.disabled = false;
     autoFillBtn.textContent = '自動填入';
     return;
   }
 
-  // 若內建詞庫找不到，使用字根猜測並提示使用者手動補充
-  rootAnalysisInput.value = guessRootAnalysis(english);
-  translationInput.value = translationInput.value || '';
-  partOfSpeechInput.value = partOfSpeechInput.value || '';
-  exampleInput.value = exampleInput.value || '';
-  alert('詞庫中找不到此單字，已以字根猜測做為參考，請手動補充翻譯或例句。');
-  autoFillBtn.disabled = false;
-  autoFillBtn.textContent = '自動填入';
+  Promise.all(tasks)
+    .finally(() => {
+      // 優先以 API 回傳為主，若 API 未回傳則 fallback 到本地詞庫或空值
+      const entry = localDictionary[lower] || {};
+      translationInput.value = results.translation || entry.translation || translationInput.value || '';
+      partOfSpeechInput.value = results.partOfSpeech || entry.partOfSpeech || partOfSpeechInput.value || '';
+      exampleInput.value = results.example || entry.example || exampleInput.value || '';
+      rootAnalysisInput.value = results.rootAnalysis || entry.rootAnalysis || guessRootAnalysis(word);
+
+      autoFillBtn.disabled = false;
+      autoFillBtn.textContent = '自動填入';
+    });
 }
 
 wordCard.addEventListener('click', () => {
