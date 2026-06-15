@@ -413,62 +413,41 @@ if (WORDNIK_API_KEY) {
 }
 
 // ==========================================
-// 流程判斷與資料填入
+// 流程判斷與資料填入 (已整合所有 Fallback 機制)
 // ==========================================
 
-if (tasks.length > 0) {
-  try {
-    // 【核心修正】等待所有 Wordnik API 請求並行完成
+try {
+  if (tasks.length > 0) {
+    // 等待所有 Wordnik API 請求並行完成
     await Promise.all(tasks);
-    
-    // API 執行完畢，將結果填入輸入框（若 API 沒查到則留空或維持原樣）
-    translationInput.value = results.translation || '';
-    partOfSpeechInput.value = results.partOfSpeech || '';
-    exampleInput.value = results.example || '';
-    // 如果 API 沒查到字源，則降級使用字根猜測
-    rootAnalysisInput.value = results.rootAnalysis || guessRootAnalysis(word);
+  }
+} catch (error) {
+  console.error('API 執行時發生未知錯誤:', error);
+} finally {
+  // 不論 API 是成功、失敗，還是根本沒執行 (tasks 為空)，統一在這裡做 Fallback 賦值
+  const entry = localDictionary[lower] || {};
 
-  } catch (error) {
-    console.error('API 執行時發生未知錯誤:', error);
-  } finally {
-    // 恢復按鈕狀態
-    autoFillBtn.disabled = false;
-    autoFillBtn.textContent = '自動填入';
+  // 優先順序：API 回傳值 ➡️ 本地詞庫 ➡️ 原本輸入框的值 ➡️ 空字串
+  translationInput.value = results.translation || entry.translation || translationInput.value || '';
+  partOfSpeechInput.value = results.partOfSpeech || entry.partOfSpeech || partOfSpeechInput.value || '';
+  exampleInput.value = results.example || entry.example || exampleInput.value || '';
+  
+  // 字根分析特別處理：API ➡️ 本地 ➡️ 原本值 ➡️ 演算法猜測
+  rootAnalysisInput.value = results.rootAnalysis || entry.rootAnalysis || rootAnalysisInput.value || guessRootAnalysis(word);
+
+  // 提示使用者目前資料來源
+  if (tasks.length === 0) {
+    if (localDictionary[lower]) {
+      console.log('已從本地詞庫填入資料。');
+    } else {
+      alert('未設定外部 API，且本地無此單字，已自動以字根猜測填入，請手動補充其他欄位。');
+    }
   }
 
-} else {
-  // 無外部 API 任務 (tasks.length === 0)，走本地或猜測邏輯
-  const entry = localDictionary[lower];
-  if (entry) {
-    translationInput.value = entry.translation || '';
-    partOfSpeechInput.value = entry.partOfSpeech || '';
-    exampleInput.value = entry.example || '';
-    rootAnalysisInput.value = entry.rootAnalysis || guessRootAnalysis(word);
-    
-    autoFillBtn.disabled = false;
-    autoFillBtn.textContent = '自動填入';
-    return;
-  }
-
-  // 無 API、無本地資料：僅猜測字根
-  rootAnalysisInput.value = guessRootAnalysis(word);
-  alert('未設定外部 API，已以字根猜測填入字根分析，請手動補充其他欄位。');
+  // 恢復按鈕狀態
   autoFillBtn.disabled = false;
   autoFillBtn.textContent = '自動填入';
 }
-
-  Promise.all(tasks)
-    .finally(() => {
-      // 優先以 API 回傳為主，若 API 未回傳則 fallback 到本地詞庫或空值
-      const entry = localDictionary[lower] || {};
-      translationInput.value = results.translation || entry.translation || translationInput.value || '';
-      partOfSpeechInput.value = results.partOfSpeech || entry.partOfSpeech || partOfSpeechInput.value || '';
-      exampleInput.value = results.example || entry.example || exampleInput.value || '';
-      rootAnalysisInput.value = results.rootAnalysis || entry.rootAnalysis || guessRootAnalysis(word);
-
-      autoFillBtn.disabled = false;
-      autoFillBtn.textContent = '自動填入';
-    });
 
 
 wordCard.addEventListener('click', () => {
